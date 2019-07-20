@@ -1,6 +1,6 @@
 from .diagnostics import WindowDiagnostics, DiagnosticsUpdate
 from .events import global_events
-from .logging import debug, server_log
+from .logging import debug
 from .types import ClientStates, ClientConfig, WindowLike, ViewLike, LanguageConfig, config_supports_syntax
 from .protocol import Notification, Response
 from .edit import parse_workspace_edit
@@ -400,21 +400,6 @@ class WindowManager(object):
             debug("window {} added session {}".format(self._window.id(), config.name))
             self._sessions[config.name] = session
 
-    def _handle_message_request(self, params: dict, client: Client, request_id: int) -> None:
-        actions = params.get("actions", [])
-        titles = list(action.get("title") for action in actions)
-
-        def send_user_choice(index):
-            # when noop; nothing was selected e.g. the user pressed escape
-            result = None
-            if index != -1:
-                result = {"title": titles[index]}
-            response = Response(request_id, result)
-            client.send_response(response)
-
-        if actions:
-            self._sublime.active_window().show_quick_panel(titles, send_user_choice)
-
     def restart_sessions(self):
         self._restarting = True
         self.end_sessions()
@@ -457,21 +442,9 @@ class WindowManager(object):
             "workspace/applyEdit",
             lambda params, request_id: self._apply_workspace_edit(params, client, request_id))
 
-        client.on_request(
-            "window/showMessageRequest",
-            lambda params, request_id: self._handle_message_request(params, client, request_id))
-
         client.on_notification(
             "textDocument/publishDiagnostics",
             lambda params: self._diagnostics.handle_client_diagnostics(config.name, params))
-
-        client.on_notification(
-            "window/showMessage",
-            lambda params: self._sublime.message_dialog(params.get("message")))
-
-        client.on_notification(
-            "window/logMessage",
-            lambda params: server_log(config.name, params.get("message", "???") if params else "???"))
 
         self._handlers.on_initialized(config.name, self._window, client)
 

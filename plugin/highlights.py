@@ -60,7 +60,7 @@ class DocumentHighlightListener(sublime_plugin.ViewEventListener):
         self._initialized = True
         session = session_for_view(self.view)
         if session:
-            self._enabled = session.get_capability("documentHighlightProvider")
+            self._enabled = session.has_capability("documentHighlightProvider")
 
     def _queue(self) -> None:
         current_point = self.view.sel()[0].begin()

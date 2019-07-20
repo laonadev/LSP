@@ -25,6 +25,8 @@ class MockClient():
                                                 completionProvider=completion_provider, textDocumentSync=True)},
         }  # type: dict
         self._notifications = []  # type: List[Notification]
+        self._notification_handlers = {}  # type: Dict[str, Callable]
+        self._request_handlers = {}  # type: Dict[str, Callable]
         self._async_response_callback = async_response
 
     def send_request(self, request: Request, on_success: 'Callable', on_error: 'Callable' = None) -> None:
@@ -39,10 +41,10 @@ class MockClient():
         self._notifications.append(notification)
 
     def on_notification(self, name, handler: 'Callable') -> None:
-        pass
+        self._notification_handlers[name] = handler
 
     def on_request(self, name, handler: 'Callable') -> None:
-        pass
+        self._request_handlers[name] = handler
 
     def set_error_display_handler(self, handler: 'Callable') -> None:
         pass
@@ -64,54 +66,35 @@ class SessionTest(unittest.TestCase):
         self.assertIsNotNone(session)
         return session
 
-    # @unittest.skip("need an example config")
-    def test_can_create_session(self):
-
-        config = ClientConfig("test", ["ls"], None, [test_language])
-        project_path = "/"
-        session = self.assert_if_none(
-            create_session(config, project_path, dict(), Settings()))
-
-        self.assertEqual(session.state, ClientStates.STARTING)
-        self.assertEqual(session.project_path, project_path)
-        session.end()
-        # self.assertIsNone(session.capabilities) -- empty dict
+    def setUp(self) -> None:
+        self.project_path = "/"
+        self.created_callback = unittest.mock.Mock()
+        self.ended_callback = unittest.mock.Mock()
+        self.session = self.assert_if_none(
+            create_session(test_config, self.project_path, dict(), Settings(),
+                           bootstrap_client=MockClient(),
+                           on_created=self.created_callback,
+                           on_ended=self.ended_callback))
+        self.assertEqual(self.session.state, ClientStates.READY)
+        self.assertIsNotNone(self.session.client)
+        self.assertEqual(self.session.project_path, self.project_path)
+        self.assertTrue(self.session.has_capability("testing"))
 
     def test_can_get_started_session(self):
-        project_path = "/"
-        created_callback = unittest.mock.Mock()
-        session = self.assert_if_none(
-            create_session(test_config, project_path, dict(), Settings(),
-                           bootstrap_client=MockClient(),
-                           on_created=created_callback))
-
-        self.assertEqual(session.state, ClientStates.READY)
-        self.assertIsNotNone(session.client)
-        self.assertEqual(session.project_path, project_path)
-        self.assertTrue(session.has_capability("testing"))
-        self.assertTrue(session.get_capability("testing"))
-        created_callback.assert_called_once()
+        self.created_callback.assert_called_once()
 
     def test_can_shutdown_session(self):
-        project_path = "/"
-        created_callback = unittest.mock.Mock()
-        ended_callback = unittest.mock.Mock()
-        session = self.assert_if_none(
-            create_session(test_config, project_path, dict(), Settings(),
-                           bootstrap_client=MockClient(),
-                           on_created=created_callback,
-                           on_ended=ended_callback))
+        self.created_callback.assert_called_once()
+        self.session.end()
+        self.assertEqual(self.session.state, ClientStates.STOPPING)
+        self.assertEqual(self.session.project_path, self.project_path)
+        self.assertIsNone(self.session.client)
+        self.assertFalse(self.session.has_capability("testing"))
+        self.assertIsNone(self.session.get_capability("testing"))
+        self.ended_callback.assert_called_once()
 
-        self.assertEqual(session.state, ClientStates.READY)
-        self.assertIsNotNone(session.client)
-        self.assertEqual(session.project_path, project_path)
-        self.assertTrue(session.has_capability("testing"))
-        created_callback.assert_called_once()
-
-        session.end()
-        self.assertEqual(session.state, ClientStates.STOPPING)
-        self.assertEqual(session.project_path, project_path)
-        self.assertIsNone(session.client)
-        self.assertFalse(session.has_capability("testing"))
-        self.assertIsNone(session.get_capability("testing"))
-        ended_callback.assert_called_once()
+    def test_has_active_handlers_for_simple_messages(self):
+        self.created_callback.assert_called_once()
+        self.assertIn('window/logMessage', self.session.client._notification_handlers)
+        self.assertIn('window/showMessage', self.session.client._notification_handlers)
+        self.assertIn('window/showMessageRequest', self.session.client._request_handlers)

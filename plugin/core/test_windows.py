@@ -1,156 +1,28 @@
-from .windows import WindowManager, WindowRegistry, ViewLike
-from .diagnostics import WindowDiagnostics
-from .sessions import create_session, Session
-from .test_session import MockClient, test_config, test_language
-from .test_rpc import MockSettings
-from .events import global_events
-from .types import ClientConfig, LanguageConfig
-from . import test_sublime as test_sublime
-# from .logging import set_debug_logging, debug
-import os
+from typing import Callable, List, Set, Dict
 import tempfile
 import unittest
 
-try:
-    from typing import Callable, List, Optional, Set, Dict, Any, Tuple
-    assert Callable and List and Optional and Set and Session and Dict and Any and Tuple
-    assert ClientConfig and LanguageConfig
-except ImportError:
-    pass
-
-
-class MockSublimeSettings(object):
-    def __init__(self, values):
-        self._values = values
-
-    def get(self, key, default=None):
-        return self._values.get(key, default)
-
-    def set(self, key, value):
-        self._values[key] = value
-
-
-class MockView(object):
-    def __init__(self, file_name):
-        self._file_name = file_name
-        self._window = None
-        self._settings = MockSublimeSettings({"syntax": "Plain Text"})
-        self._status = dict()  # type: Dict[str, str]
-        self._text = "asdf"
-
-    def file_name(self):
-        return self._file_name
-
-    def set_window(self, window):
-        self._window = window
-
-    def set_status(self, key, status):
-        self._status[key] = status
-
-    def window(self):
-        return self._window
-
-    def settings(self):
-        return self._settings
-
-    def substr(self, region):
-        return self._text
-
-    def size(self):
-        return len(self._text)
-
-    def sel(self):
-        return [test_sublime.Region(1, 1)]
-
-    def score_selector(self, region, scope: str) -> int:
-        return 1
-
-    def buffer_id(self):
-        return 1
+from . import test_sublime as test_sublime
+from .diagnostics import WindowDiagnostics
+from .events import global_events
+from .sessions import create_session, Session
+from .test_rpc import MockSettings
+from .test_session import MockClient, test_config, test_language
+from .test_sublime import MockWindow, MockView
+from .types import ClientConfig, LanguageConfig
+from .windows import WindowManager, WindowRegistry, ViewLike
 
 
 class MockHandlerDispatcher(object):
     def __init__(self, can_start: bool = True) -> None:
         self._can_start = can_start
-        self._initialized = set()  # type: Set[str]
+        self._initialized: Set[str] = set()
 
     def on_start(self, config_name: str, window) -> bool:
         return self._can_start
 
     def on_initialized(self, config_name: str, window, client):
         self._initialized.add(config_name)
-
-
-class MockWindow(object):
-    def __init__(self, files_in_groups: 'List[List[ViewLike]]' = []) -> None:
-        self._files_in_groups = files_in_groups
-        self._is_valid = True
-        self._folders = [os.path.dirname(__file__)]
-        self._default_view = MockView(None)
-        self._project_data = None  # type: Optional[Dict[str, Any]]
-        self.commands = []  # type: List[Tuple[str, Dict[str, Any]]]
-
-    def id(self):
-        return 0
-
-    def folders(self):
-        return self._folders
-
-    def set_folders(self, folders):
-        self._folders = folders
-
-    def num_groups(self):
-        return len(self._files_in_groups)
-
-    def active_group(self):
-        return 0
-
-    def project_data(self) -> Optional[dict]:
-        return self._project_data
-
-    def set_project_data(self, data: Optional[dict]):
-        self._project_data = data
-
-    def active_view(self) -> Optional[ViewLike]:
-        return self.active_view_in_group(0)
-
-    def close(self):
-        self._is_valid = False
-
-    def is_valid(self):
-        return self._is_valid
-
-    def extract_variables(self):
-        return {
-            "project_path": os.path.dirname(__file__)
-        }
-
-    def active_view_in_group(self, group):
-        if group < len(self._files_in_groups):
-            files = self._files_in_groups[group]
-            if len(files) > 0:
-                return files[0]
-            else:
-                return self._default_view
-
-    def add_view_in_group(self, group, view):
-        self._files_in_groups[group].append(view)
-
-    def status_message(self, msg: str) -> None:
-        pass
-
-    def views(self):
-        views = []
-        for views_in_group in self._files_in_groups:
-            if len(views_in_group) < 1:
-                views.append(self._default_view)
-            else:
-                for view in views_in_group:
-                    views.append(view)
-        return views
-
-    def run_command(self, command_name: str, command_args: 'Dict[str, Any]') -> None:
-        self.commands.append((command_name, command_args))
 
 
 class TestGlobalConfigs(object):
@@ -180,7 +52,7 @@ class MockConfigs(object):
     def syntax_supported(self, view: ViewLike) -> bool:
         return view.settings().get("syntax") == "Plain Text"
 
-    def syntax_config_languages(self, view: ViewLike) -> 'Dict[str, LanguageConfig]':
+    def syntax_config_languages(self, view: ViewLike) -> Dict[str, LanguageConfig]:
         if self.syntax_supported(view):
             return {
                 "test": test_language
@@ -188,7 +60,7 @@ class MockConfigs(object):
         else:
             return {}
 
-    def update(self, configs: 'List[ClientConfig]') -> None:
+    def update(self, configs: List[ClientConfig]) -> None:
         pass
 
     def disable(self, config_name: str) -> None:
@@ -197,10 +69,10 @@ class MockConfigs(object):
 
 class MockDocuments(object):
     def __init__(self):
-        self._documents = []  # type: List[str]
-        self._sessions = {}  # type: Dict[str, Session]
+        self._documents: List[str] = []
+        self._sessions: Dict[str, Session] = {}
 
-    def add_session(self, session: 'Session') -> None:
+    def add_session(self, session: Session) -> None:
         self._sessions[session.config.name] = session
 
     def remove_session(self, config_name: str) -> None:
@@ -220,7 +92,7 @@ class TestDocumentHandlerFactory(object):
         return MockDocuments()
 
 
-def mock_start_session(window, project_path, config, on_created: 'Callable', on_ended: 'Callable'):
+def mock_start_session(window, project_path, config, on_created: Callable, on_ended: Callable):
     return create_session(test_config, project_path, dict(), MockSettings(),
                           bootstrap_client=MockClient(),
                           on_created=on_created,

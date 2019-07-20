@@ -1,17 +1,23 @@
-from .types import ClientConfig, ClientStates, Settings
-from .protocol import Request
-from .transports import start_tcp_transport
-from .rpc import Client, attach_stdio_client
+from .logging import debug, server_log
 from .process import start_server
+from .protocol import Request, Response, completion_item_kinds, symbol_kinds
+from .rpc import Client, attach_stdio_client
+from .transports import start_tcp_transport
+from .types import ClientConfig, ClientStates, Settings
 from .url import filename_to_uri
-from .logging import debug
+
 import os
-from .protocol import completion_item_kinds, symbol_kinds
+
 try:
     from typing import Callable, Dict, Any, Optional
     assert Callable and Dict and Any and Optional
 except ImportError:
     pass
+
+try:
+    import sublime
+except ImportError:
+    from . import test_sublime as sublime  # type: ignore
 
 
 def create_session(config: ClientConfig, project_path: str, env: dict, settings: Settings,
@@ -116,6 +122,10 @@ def get_initialize_params(project_path: str, config: ClientConfig):
     return initializeParams
 
 
+def extract_message(response: 'Optional[Dict[str, Any]]') -> str:
+    return response.get('message', '???') if response else '???'
+
+
 class Session(object):
     def __init__(self, config: ClientConfig, project_path, client: Client,
                  on_created=None, on_ended: 'Optional[Callable[[str], None]]' = None) -> None:
@@ -126,34 +136,59 @@ class Session(object):
         self._on_ended = on_ended
         self.capabilities = dict()  # type: Dict[str, Any]
         self.client = client
-        self.initialize()
+        self.__setup_special_notification_and_request_handlers()
+        self.__initialize()
 
-    def has_capability(self, capability):
+    def has_capability(self, capability) -> bool:
         return capability in self.capabilities and self.capabilities[capability] is not False
 
-    def get_capability(self, capability):
+    def get_capability(self, capability) -> 'Optional[Dict[str, Any]]':
         return self.capabilities.get(capability)
-
-    def initialize(self):
-        params = get_initialize_params(self.project_path, self.config)
-        self.client.send_request(
-            Request.initialize(params),
-            lambda result: self._handle_initialize_result(result))
-
-    def _handle_initialize_result(self, result):
-        self.state = ClientStates.READY
-        self.capabilities = result.get('capabilities', dict())
-        if self._on_created:
-            self._on_created(self)
 
     def end(self):
         self.state = ClientStates.STOPPING
         self.client.send_request(
             Request.shutdown(),
-            lambda result: self._handle_shutdown_result(),
-            lambda: self._handle_shutdown_result())
+            lambda result: self.__handle_shutdown_result(),
+            lambda: self.__handle_shutdown_result())
 
-    def _handle_shutdown_result(self):
+    def __initialize(self) -> None:
+        params = get_initialize_params(self.project_path, self.config)
+        self.client.send_request(Request.initialize(params), self.__handle_initialize_result)
+
+    def __setup_special_notification_and_request_handlers(self) -> None:
+        self.client.on_notification('window/logMessage', self.__handle_log_message)
+        self.client.on_notification('window/showMessage', self.__handle_show_message)
+        self.client.on_request('window/showMessageRequest', self.__handle_show_message_request)
+
+    def __handle_log_message(self, response: 'Optional[Dict[str, Any]]') -> None:
+        server_log(self.config.name, extract_message(response))
+
+    def __handle_show_message(self, response: 'Optional[Dict[str, Any]]') -> None:
+        sublime.message_dialog(extract_message(response))
+
+    def __handle_show_message_request(self, response: 'Dict[str, Any]', request_id: int) -> None:
+        actions = response.get("actions", [])
+        if not actions:
+            return
+        titles = list(action.get("title") for action in actions)
+
+        def send_user_choice(index: int) -> None:
+            if index == -1:
+                return
+            result = {"title": titles[index]}
+            response = Response(request_id, result)
+            self.client.send_response(response)
+
+        sublime.active_window().show_quick_panel(titles, send_user_choice)
+
+    def __handle_initialize_result(self, result):
+        self.state = ClientStates.READY
+        self.capabilities = result.get('capabilities', dict())
+        if self._on_created:
+            self._on_created(self)
+
+    def __handle_shutdown_result(self):
         self.client.exit()
         self.client = None
         self.capabilities = dict()
