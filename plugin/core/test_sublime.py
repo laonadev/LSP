@@ -3,6 +3,8 @@ from typing import Dict, List, Optional, Tuple, Any
 from .types import ViewLike, WindowLike
 import os
 
+assert Dict and List and Tuple and Any
+
 
 DIALOG_CANCEL = 0
 DIALOG_YES = 1
@@ -65,8 +67,8 @@ class MockWindow(WindowLike):
         self._is_valid = True
         self._folders = [os.path.dirname(__file__)]
         self._default_view = MockView(None)
-        self._project_data: Optional[Dict[str, Any]] = None
-        self.commands: List[Tuple[str, Dict[str, Any]]] = []
+        self._project_data = None  # type: Optional[Dict[str, Any]]
+        self.commands = []  # type: List[Tuple[str, Dict[str, Any]]]
 
     def id(self):
         return 0
