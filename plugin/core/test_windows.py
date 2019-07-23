@@ -12,11 +12,14 @@ from .test_sublime import MockWindow, MockView
 from .types import ClientConfig, LanguageConfig
 from .windows import WindowManager, WindowRegistry, ViewLike
 
+assert List and Set
+
 
 class MockHandlerDispatcher(object):
+
     def __init__(self, can_start: bool = True) -> None:
         self._can_start = can_start
-        self._initialized: Set[str] = set()
+        self._initialized = set()  # type: Set[str]
 
     def on_start(self, config_name: str, window) -> bool:
         return self._can_start
@@ -69,8 +72,8 @@ class MockConfigs(object):
 
 class MockDocuments(object):
     def __init__(self):
-        self._documents: List[str] = []
-        self._sessions: Dict[str, Session] = {}
+        self._documents = []  # type: List[str]
+        self._sessions = {}  # type: Dict[str, Session]
 
     def add_session(self, session: Session) -> None:
         self._sessions[session.config.name] = session
