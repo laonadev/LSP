@@ -37,7 +37,7 @@ def create_session(config: ClientConfig, project_path: str, env: dict, settings:
                 session = Session(config, project_path, client, on_created, on_ended)
     else:
         if config.tcp_port:
-            transport = start_tcp_transport(config.tcp_port)
+            transport = start_tcp_transport(config.tcp_port, config.tcp_host)
 
             session = Session(config, project_path, Client(transport, settings),
                               on_created, on_ended)
